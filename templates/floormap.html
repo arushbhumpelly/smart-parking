@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Parking map{% if target %} - {{ target }}{% endif %}{% endblock %}
+
+{% block content %}
+
+<div class="card">
+
+    <h1>PARKING MAP</h1>
+
+    {% if target %}
+        <p>
+            Your slot is <strong>{{ target }}</strong>
+            on Floor {{ target_floor }}.
+        </p>
+    {% else %}
+        <p>
+            Top view of all three parking floors.
+            Free bays are white, occupied bays show a car.
+        </p>
+    {% endif %}
+
+    {% set map_mode = "to" %}
+    {% include "_map.html" %}
+
+</div>
+
+
+<div class="card">
+
+    {% if target %}
+        <a class="button primary"
+           href="{{ url_for('navigate', slot_id=target) }}">
+            LIVE GPS NAVIGATION
+        </a>
+    {% endif %}
+
+    <a class="button" href="{{ url_for('home') }}">
+        BACK TO HOME
+    </a>
+
+</div>
+
+{% endblock %}

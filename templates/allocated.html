@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Slot {{ slot.id }} allocated{% endblock %}
+
+{% block content %}
+
+<div class="card">
+
+    <h1>PARKING SLOT ALLOCATED</h1>
+
+    <p>Your parking slot has been automatically selected.</p>
+
+    <div class="slot">
+        {{ slot.id }}
+    </div>
+
+    <p>
+        <strong>Floor:</strong>
+        {{ slot.floor }}
+    </p>
+
+</div>
+
+
+<div class="card">
+
+    <h2>Route to your slot</h2>
+
+    <p>
+        The green line shows the way from the entrance
+        to <strong>{{ slot.id }}</strong>. Switch floors with
+        the tabs, and use the buttons to see the exit route.
+    </p>
+
+    {% set map_mode = "to" %}
+    {% include "_map.html" %}
+
+</div>
+
+
+<div class="card">
+
+    <h2>Driving there now?</h2>
+
+    <p>
+        Live GPS tracking guides you to the building entrance,
+        then hands over to the floor map above.
+    </p>
+
+    <a class="button primary"
+       href="{{ url_for('navigate', slot_id=slot.id) }}">
+        START LIVE NAVIGATION
+    </a>
+
+</div>
+
+
+<div class="card">
+
+    <h2>Have you reached your parking slot?</h2>
+
+    <p>
+        Confirm only after you reach
+        <strong>{{ slot.id }}</strong>.
+    </p>
+
+    <form action="{{ url_for('reach', slot_id=slot.id) }}"
+          method="POST">
+
+        <button type="submit" class="primary">
+            YES - I REACHED MY SLOT
+        </button>
+
+    </form>
+
+</div>
+
+{% endblock %}

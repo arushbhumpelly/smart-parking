@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Dashboard – Smart Parking</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            margin: 0;
+            padding: 2rem;
+        }
+        h1, h2 {
+            margin-top: 0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+        .header a {
+            color: #60a5fa;
+            text-decoration: none;
+        }
+        .stats {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: #1e293b;
+            padding: 1rem;
+            border-radius: 6px;
+            min-width: 120px;
+            text-align: center;
+        }
+        .stat-card .value {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        .stat-card .label {
+            font-size: 0.85rem;
+            color: #94a3b8;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #1e293b;
+            border-radius: 6px;
+            overflow: hidden;
+            margin-bottom: 2rem;
+        }
+        th, td {
+            padding: 0.6rem 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #334155;
+        }
+        th {
+            background: #0f172a;
+            font-size: 0.85rem;
+            color: #94a3b8;
+        }
+        tr:last-child td {
+            border-bottom: none;
+        }
+        .btn {
+            display: inline-block;
+            padding: 0.35rem 0.6rem;
+            border-radius: 4px;
+            border: none;
+            font-size: 0.85rem;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+        .btn-success {
+            background: #22c55e;
+            color: white;
+        }
+        .btn-warning {
+            background: #f59e0b;
+            color: white;
+        }
+        .section {
+            margin-bottom: 2.5rem;
+        }
+        .flash {
+            margin-bottom: 1rem;
+            padding: 0.5rem 0.75rem;
+            border-radius: 4px;
+        }
+        .flash.success {
+            background: #14532d;
+            color: #86efac;
+        }
+        .flash.error {
+            background: #450a0a;
+            color: #fca5a5;
+        }
+        .form-inline {
+            display: inline-flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+        .form-inline input,
+        .form-inline select {
+            padding: 0.35rem 0.5rem;
+            border-radius: 4px;
+            border: 1px solid #334155;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Admin Dashboard</h1>
+        <div>
+            Logged in as: {{ session.get("admin_username") }} |
+            <a href="{{ url_for('admin_logout') }}">Logout</a>
+        </div>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <div class="section">
+        <h2>Summary</h2>
+        <div class="stats">
+            <div class="stat-card">
+                <div class="value">{{ total }}</div>
+                <div class="label">Total Slots</div>
+            </div>
+            <div class="stat-card">
+                <div class="value">{{ available }}</div>
+                <div class="label">Available</div>
+            </div>
+            <div class="stat-card">
+                <div class="value">{{ occupied }}</div>
+                <div class="label">Occupied</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Active Bookings</h2>
+        {% if active_sessions %}
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Slot</th>
+                    <th>Floor</th>
+                    <th>Email</th>
+                    <th>Start Time</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in active_sessions %}
+                <tr>
+                    <td>{{ s.id }}</td>
+                    <td>{{ s.slot_id }}</td>
+                    <td>{{ s.floor }}</td>
+                    <td>{{ s.email }}</td>
+                    <td>{{ s.start_time }}</td>
+                    <td>
+                        <form class="form-inline" method="post"
+                              action="{{ url_for('admin_cancel_session', session_id=s.id) }}"
+                              onsubmit="return confirm('Cancel this booking?');">
+                            <button class="btn btn-danger" type="submit">Cancel</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p>No active bookings.</p>
+        {% endif %}
+    </div>
+
+    <div class="section">
+        <h2>All Parking Slots</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Slot ID</th>
+                    <th>Floor</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for slot in all_slots %}
+                <tr>
+                    <td>{{ slot.id }}</td>
+                    <td>{{ slot.floor }}</td>
+                    <td>{{ slot.status }}</td>
+                    <td>
+                        {% if slot.status == 'AVAILABLE' %}
+                        <form class="form-inline" method="post"
+                              action="{{ url_for('admin_set_slot_status', slot_id=slot.id) }}">
+                            <input type="hidden" name="status" value="OCCUPIED">
+                            <button class="btn btn-warning" type="submit">Mark Occupied</button>
+                        </form>
+                        {% else %}
+                        <form class="form-inline" method="post"
+                              action="{{ url_for('admin_set_slot_status', slot_id=slot.id) }}">
+                            <input type="hidden" name="status" value="AVAILABLE">
+                            <button class="btn btn-success" type="submit">Mark Available</button>
+                        </form>
+                        {% endif %}
+
+                        <form class="form-inline" method="post"
+                              action="{{ url_for('admin_delete_slot', slot_id=slot.id) }}"
+                              onsubmit="return confirm('Delete slot {{ slot.id }}?');">
+                            <button class="btn btn-danger" type="submit">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <h3>Add New Slot</h3>
+        <form class="form-inline" method="post" action="{{ url_for('admin_add_slot') }}">
+            <input type="text" name="slot_id" placeholder="Slot ID (e.g. F1-21)" required>
+            <input type="number" name="floor" placeholder="Floor" required>
+            <select name="status">
+                <option value="AVAILABLE">Available</option>
+                <option value="OCCUPIED">Occupied</option>
+            </select>
+            <button class="btn btn-success" type="submit">Add Slot</button>
+        </form>
+    </div>
+
+</body>
+</html>

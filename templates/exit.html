@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Route to exit{% endblock %}
+
+{% block content %}
+
+<div class="card">
+
+    <h1>EXIT NAVIGATION</h1>
+
+    <p>Your vehicle has been found.</p>
+
+    <p>
+        Follow the amber route from
+        <strong>{{ parking.slot_id }}</strong> out of the building.
+    </p>
+
+</div>
+
+
+<div class="card">
+
+    <h2>Route to the exit</h2>
+
+    {% set map_mode = "exit" %}
+    {% include "_map.html" %}
+
+</div>
+
+
+<div class="card">
+
+    <h2>Confirm exit</h2>
+
+    <p>
+        Confirm only after your vehicle has
+        completely exited the parking area.
+        This releases slot <strong>{{ parking.slot_id }}</strong>
+        for the next driver.
+    </p>
+
+    <form action="{{ url_for('exit_parking', session_id=parking.id) }}"
+          method="POST">
+
+        <button type="submit" class="primary">
+            I HAVE EXITED
+        </button>
+
+    </form>
+
+</div>
+
+{% endblock %}

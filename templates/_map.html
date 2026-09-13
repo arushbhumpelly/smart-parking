@@ -1,0 +1,353 @@
+{# ==================================================
+   _map.html  -  reusable top-view parking map
+   ==================================================
+   Include it and set the variables first, e.g.
+
+     {% set map_mode = "to" %}
+     {% include "_map.html" %}
+
+   Variables it reads:
+     floors_data   dict  {"1":[{id,status},...], "2":[...], "3":[...]}
+     target        str   slot id to highlight, or None
+     target_floor  int   floor of that slot, or None
+     map_mode      str   "to"       drive from the gate/ramp to the bay
+                         "retrieve" walk from the lift to the bay
+                         "exit"     drive from the bay out
+                         "none"     plain map, no route
+     map_tabs      bool  show the Floor 1/2/3 switcher (default true)
+     map_buttons   bool  show the route toggle buttons (default true)
+   ================================================== #}
+
+<style>
+.pmap-wrap{margin:0}
+.pmap-tabs{display:flex; gap:8px; margin-bottom:12px}
+.pmap-tab{
+  flex:1; padding:10px 6px; border-radius:10px; cursor:pointer;
+  background:#10243a; border:1px solid #1d3550; color:#9fb3c8;
+  font-size:13px; font-weight:600; text-align:center;
+}
+.pmap-tab .sub{display:block; font-size:11px; font-weight:500; margin-top:3px; opacity:.85}
+.pmap-tab.active{background:#16304d; border-color:#3b82f6; color:#eaf1f8}
+.pmap-tab.hasSlot{border-color:#22c55e}
+
+.pmap-box{
+  background:#10243a; border:1px solid #1d3550; border-radius:12px;
+  padding:9px; overflow-x:auto; -webkit-overflow-scrolling:touch;
+}
+.pmap-box svg{display:block; width:100%; min-width:620px; height:auto}
+
+.pmap-controls{display:flex; gap:8px; margin-top:12px; flex-wrap:wrap}
+.pmap-btn{
+  flex:1 1 150px; margin:0; padding:11px 12px; border-radius:10px; cursor:pointer;
+  border:1px solid #1d3550; background:#10243a; color:#9fb3c8;
+  font-size:13px; font-weight:600; text-align:center; text-decoration:none;
+  width:auto; display:block;
+}
+.pmap-btn.on{background:#3b82f6; border-color:#3b82f6; color:#fff}
+
+.pmap-legend{
+  display:flex; gap:15px; flex-wrap:wrap; margin-top:13px;
+  font-size:12px; color:#9fb3c8;
+}
+.pmap-legend i{
+  width:11px; height:11px; border-radius:3px;
+  display:inline-block; margin-right:6px; vertical-align:-1px;
+}
+.pmap-steps{
+  background:#10243a; border:1px solid #1d3550;
+  border-radius:12px; padding:13px 16px; margin-top:13px;
+}
+.pmap-steps h3{
+  margin:0 0 8px; font-size:12px; font-weight:650; color:#9fb3c8;
+  text-transform:uppercase; letter-spacing:.6px;
+}
+.pmap-steps ol{margin:0; padding-left:20px; font-size:14px; line-height:1.8}
+.pmap-steps b{color:#7ee2a8}
+
+.pmap-route{
+  fill:none; stroke:#22c55e; stroke-width:7; stroke-linecap:round;
+  stroke-linejoin:round; stroke-dasharray:18 14;
+  animation:pmapflow 1s linear infinite;
+}
+.pmap-route.exit{stroke:#f59e0b}
+@keyframes pmapflow{to{stroke-dashoffset:-32}}
+.pmap-tgt{animation:pmapblink 1.4s ease-in-out infinite}
+@keyframes pmapblink{0%,100%{opacity:1}50%{opacity:.45}}
+</style>
+
+<div class="pmap-wrap">
+  {% if map_tabs is not defined or map_tabs %}
+    <div class="pmap-tabs" id="pmapTabs"></div>
+  {% endif %}
+
+  <div class="pmap-box">
+    <svg id="pmapSvg" viewBox="0 0 1000 560"
+         preserveAspectRatio="xMidYMid meet" role="img"
+         aria-label="Top view parking map"></svg>
+  </div>
+
+  {% if map_buttons is not defined or map_buttons %}
+    <div class="pmap-controls" id="pmapControls"></div>
+  {% endif %}
+
+  <div class="pmap-steps" id="pmapSteps" style="display:none">
+    <h3>Directions</h3>
+    <ol id="pmapStepList"></ol>
+  </div>
+
+  <div class="pmap-legend">
+    <span><i style="background:#22c55e"></i>Your slot</span>
+    <span><i style="background:#e8ebf0"></i>Free bay</span>
+    <span><i style="background:#ef4444"></i>Occupied</span>
+    <span><i style="background:#3b82f6"></i>Entry</span>
+    <span><i style="background:#f59e0b"></i>Exit route</span>
+    <span><i style="background:#8b93a1"></i>Ramp / lift</span>
+  </div>
+</div>
+
+<script>
+(function(){
+
+const FLOORS = {{ floors_data | tojson }};
+const TARGET = {{ target | tojson }};
+const TARGET_FLOOR = {{ target_floor | tojson }};
+const START_MODE = {{ (map_mode if map_mode is defined else "to") | tojson }};
+const SHOW_TABS = {{ (map_tabs if map_tabs is defined else true) | tojson }};
+const SHOW_BTNS = {{ (map_buttons if map_buttons is defined else true) | tojson }};
+
+// ---------------- geometry ----------------
+const W=1000, H=560, PAD=16;
+const BAY_TOP_Y=76, BAY_H=112;
+const LANE_TOP=BAY_TOP_Y+BAY_H;      // 188
+const LANE_BOT=344;
+const BAY_BOT_Y=LANE_BOT;
+const ROAD_X0=80, ROAD_X1=900;
+const BAYS_PER_ROW=10;
+const BAY_W=(ROAD_X1-ROAD_X0)/BAYS_PER_ROW;
+const RAMP_X=916, RAMP_W=56;
+const GATE_X=42;
+const LANE_IN=212;                   // inbound driving line
+const LANE_OUT=322;                  // outbound driving line
+const LIFT={x:PAD+6,y:238,w:52,h:40};
+const LIFT_CX=LIFT.x+LIFT.w/2, LIFT_CY=LIFT.y+LIFT.h/2;
+
+const NS='http://www.w3.org/2000/svg';
+const el=(n,a={})=>{const e=document.createElementNS(NS,n);
+  for(const k in a) e.setAttribute(k,a[k]); return e;};
+const txt=(a,s)=>{const t=el('text',Object.assign({'font-family':'system-ui'},a));
+  t.textContent=s; return t;};
+
+function bayRect(i){
+  const top=i<BAYS_PER_ROW, c=top?i:i-BAYS_PER_ROW;
+  return {x:ROAD_X0+c*BAY_W, y:top?BAY_TOP_Y:BAY_BOT_Y, w:BAY_W, h:BAY_H, top};
+}
+
+function car(g,r,colour){
+  const cx=r.x+r.w/2, bw=r.w*0.58, bh=r.h*0.74;
+  const bx=cx-bw/2,  by=r.y+(r.h-bh)/2;
+  g.appendChild(el('rect',{x:bx,y:by,width:bw,height:bh,rx:11,fill:colour,opacity:.92}));
+  const wy=r.top?by+bh*0.58:by+bh*0.16;
+  g.appendChild(el('rect',{x:bx+bw*0.16,y:wy,width:bw*0.68,height:bh*0.24,
+    rx:5,fill:'#0f1117',opacity:.34}));
+  g.appendChild(el('rect',{x:bx+bw*0.16,y:r.top?by+bh*0.14:by+bh*0.62,
+    width:bw*0.68,height:bh*0.2,rx:5,fill:'#ffffff',opacity:.16}));
+}
+
+function drawFloor(floor,mode){
+  const svg=document.getElementById('pmapSvg');
+  svg.textContent='';
+  const slots=FLOORS[String(floor)]||[];
+
+  // landscaping + asphalt
+  svg.appendChild(el('rect',{x:0,y:0,width:W,height:H,rx:14,fill:'#1d3b28'}));
+  [[46,504,15],[112,522,11],[880,506,13],[946,528,10],[500,536,9]].forEach(t=>
+    svg.appendChild(el('circle',{cx:t[0],cy:t[1],r:t[2],fill:'#2f6b44',opacity:.85})));
+  svg.appendChild(el('rect',{x:PAD,y:PAD,width:W-2*PAD,height:H-2*PAD-44,rx:10,fill:'#494e59'}));
+
+  svg.appendChild(txt({x:PAD+22,y:PAD+38,fill:'#ffffff','font-size':26,'font-weight':700},
+    'FLOOR '+floor));
+  const free=slots.filter(s=>s.status==='AVAILABLE').length;
+  svg.appendChild(txt({x:W-PAD-22,y:PAD+38,fill:'#d7dbe2','font-size':15,
+    'text-anchor':'end'}, free+' of '+slots.length+' free'));
+
+  // drive lane
+  svg.appendChild(el('rect',{x:PAD+8,y:LANE_TOP,width:W-2*PAD-16-RAMP_W-6,
+    height:LANE_BOT-LANE_TOP,fill:'#3b4049'}));
+  svg.appendChild(el('line',{x1:PAD+76,y1:(LANE_TOP+LANE_BOT)/2,
+    x2:ROAD_X1+8,y2:(LANE_TOP+LANE_BOT)/2,stroke:'#f2c14e','stroke-width':3,
+    'stroke-dasharray':'26 20',opacity:.75}));
+
+  // bays
+  const bays=el('g');
+  slots.forEach((s,i)=>{
+    if(i>=BAYS_PER_ROW*2) return;
+    const r=bayRect(i), occupied=s.status!=='AVAILABLE',
+          isTarget=(s.id===TARGET && floor===TARGET_FLOOR);
+
+    bays.appendChild(el('rect',{x:r.x,y:r.y,width:r.w,height:r.h,
+      fill:isTarget?'#1d6b39':(occupied?'#5a4247':'#e8ebf0'),
+      opacity:isTarget?1:(occupied?1:.93)}));
+    bays.appendChild(el('line',{x1:r.x,y1:r.y,x2:r.x,y2:r.y+r.h,
+      stroke:'#ffffff','stroke-width':3,opacity:.85}));
+    if(i===BAYS_PER_ROW-1||i===BAYS_PER_ROW*2-1)
+      bays.appendChild(el('line',{x1:r.x+r.w,y1:r.y,x2:r.x+r.w,y2:r.y+r.h,
+        stroke:'#ffffff','stroke-width':3,opacity:.85}));
+    bays.appendChild(el('rect',{x:r.x,y:r.top?r.y-6:r.y+r.h,width:r.w,height:6,fill:'#8b93a1'}));
+
+    if(occupied) car(bays,r,'#d1495b');
+    if(isTarget){
+      const g=el('g',{class:'pmap-tgt'});
+      g.appendChild(el('rect',{x:r.x+3,y:r.y+3,width:r.w-6,height:r.h-6,
+        fill:'none',stroke:'#22c55e','stroke-width':5,rx:4}));
+      bays.appendChild(g);
+    }
+    bays.appendChild(txt({x:r.x+r.w/2,y:r.top?r.y+22:r.y+r.h-10,'text-anchor':'middle',
+      'font-size':15,'font-weight':700,
+      fill:isTarget?'#ffffff':(occupied?'#f0c9cf':'#2b3038')}, s.id.split('-')[1]));
+  });
+  svg.appendChild(bays);
+
+  // ramp
+  svg.appendChild(el('rect',{x:RAMP_X,y:LANE_TOP,width:RAMP_W,
+    height:LANE_BOT-LANE_TOP,fill:'#8b93a1'}));
+  for(let y=LANE_TOP+12;y<LANE_BOT-6;y+=22)
+    svg.appendChild(el('path',{d:'M'+(RAMP_X+10)+' '+(y+12)+' L'+(RAMP_X+RAMP_W/2)+' '+y
+      +' L'+(RAMP_X+RAMP_W-10)+' '+(y+12),fill:'none',stroke:'#ffffff',
+      'stroke-width':3,opacity:.7}));
+  svg.appendChild(txt({x:RAMP_X+RAMP_W/2,y:LANE_BOT+22,'text-anchor':'middle',
+    fill:'#e4e7ec','font-size':13,'font-weight':700},'RAMP'));
+
+  // left service strip: gates (floor 1) + lift core (every floor)
+  svg.appendChild(el('rect',{x:PAD+4,y:LANE_TOP,width:GATE_X-PAD+18,
+    height:LANE_BOT-LANE_TOP,fill:'#3b4049'}));
+
+  if(floor===1){
+    const arrow=(y,colour,label,dir)=>{
+      svg.appendChild(el('path',{d:dir>0
+        ? 'M'+(PAD+10)+' '+y+' L'+(PAD+52)+' '+y+' M'+(PAD+42)+' '+(y-9)+' L'+(PAD+52)+' '+y+' L'+(PAD+42)+' '+(y+9)
+        : 'M'+(PAD+52)+' '+y+' L'+(PAD+10)+' '+y+' M'+(PAD+20)+' '+(y-9)+' L'+(PAD+10)+' '+y+' L'+(PAD+20)+' '+(y+9),
+        fill:'none',stroke:colour,'stroke-width':5,'stroke-linecap':'round'}));
+      svg.appendChild(txt({x:PAD+31,y:y-15,'text-anchor':'middle',fill:colour,
+        'font-size':13,'font-weight':700},label));
+    };
+    arrow(LANE_IN,'#60a5fa','IN',1);
+    arrow(LANE_OUT,'#fbbf24','OUT',-1);
+  }
+
+  svg.appendChild(el('rect',{x:LIFT.x,y:LIFT.y,width:LIFT.w,height:LIFT.h,rx:6,
+    fill:'#6b7280',stroke:'#ffffff','stroke-width':2}));
+  svg.appendChild(txt({x:LIFT_CX,y:LIFT_CY+5,'text-anchor':'middle',fill:'#ffffff',
+    'font-size':11,'font-weight':700},'LIFT'));
+
+  // ---------------- route ----------------
+  const stepsBox=document.getElementById('pmapSteps');
+  stepsBox.style.display='none';
+  if(mode==='none'||!TARGET||floor!==TARGET_FLOOR) return;
+
+  const idx=slots.findIndex(s=>s.id===TARGET);
+  if(idx<0||idx>=BAYS_PER_ROW*2) return;
+
+  const r=bayRect(idx), cx=r.x+r.w/2;
+  const bayStop=r.top?r.y+r.h-26:r.y+26;
+  const upper=floor!==1;
+  const walking=(mode==='retrieve');
+
+  let pts, startPin, lineY;
+  if(mode==='exit'){
+    lineY=LANE_OUT;
+    pts=[[cx,bayStop],[cx,lineY],[upper?RAMP_X+RAMP_W/2:GATE_X,lineY]];
+    startPin=pts[0];
+  }else if(walking){
+    // start just OUTSIDE the lift box so the LIFT label stays readable
+    lineY=LIFT_CY;
+    pts=[[LIFT.x+LIFT.w+12,LIFT_CY],[cx,lineY],[cx,bayStop]];
+    startPin=pts[0];
+  }else{
+    lineY=LANE_IN;
+    pts=[[upper?RAMP_X+RAMP_W/2:GATE_X,lineY],[cx,lineY],[cx,bayStop]];
+    startPin=pts[0];
+  }
+
+  svg.appendChild(el('polyline',{points:pts.map(p=>p.join(',')).join(' '),
+    class:'pmap-route'+(mode==='exit'?' exit':'')}));
+  svg.appendChild(el('circle',{cx:startPin[0],cy:startPin[1],r:walking?10:13,
+    fill:mode==='exit'?'#f59e0b':'#22c55e',stroke:'#ffffff','stroke-width':3}));
+
+  // ---------------- written directions ----------------
+  const bayNo=TARGET.split('-')[1];
+  const row=r.top?'upper':'lower';
+  const fromRight=(upper && !walking);     // arriving down the ramp, heading left
+  const side=fromRight ? (r.top?'right':'left') : (r.top?'left':'right');
+  const col=(idx%BAYS_PER_ROW)+1;
+  const fromEnd=fromRight ? (BAYS_PER_ROW-col+1) : col;
+  const ord=n=>n+(n%10===1&&n!==11?'st':n%10===2&&n!==12?'nd':n%10===3&&n!==13?'rd':'th');
+
+  let steps;
+  if(mode==='exit'){
+    steps=['Reverse out of bay <b>'+TARGET+'</b>.',
+      'Join the drive lane and head '+(upper?'toward the ramp':'toward the OUT gate')+'.',
+      upper ? 'Take the <b>RAMP</b> down to Floor 1, then out through the <b>OUT</b> gate.'
+            : 'Leave through the <b>OUT</b> gate.'];
+  }else if(walking){
+    steps=['Take the <b>LIFT</b> or stairs to <b>Floor '+floor+'</b>.',
+      'Your vehicle is in bay <b>'+bayNo+'</b>, in the '+row+' row on your '+side+'.',
+      'It is the <b>'+ord(fromEnd)+'</b> bay counting from the lift.',
+      'Look for <b>'+TARGET+'</b> — highlighted green on the map.'];
+  }else{
+    steps=[upper ? 'Take the <b>RAMP</b> up to <b>Floor '+floor+'</b>.'
+                 : 'Enter through the <b>IN</b> gate on Floor 1.',
+      'Drive along the central lane — bay <b>'+bayNo+'</b> is in the '+row
+        +' row, on your '+side+'.',
+      'It is the <b>'+ord(fromEnd)+'</b> bay counting from where you joined the lane.',
+      'Park in <b>'+TARGET+'</b> — highlighted green.'];
+  }
+
+  const list=document.getElementById('pmapStepList');
+  list.innerHTML='';
+  steps.forEach(t=>{const li=document.createElement('li'); li.innerHTML=t; list.appendChild(li);});
+  stepsBox.style.display='block';
+}
+
+// ---------------- chrome ----------------
+let curFloor=TARGET_FLOOR||1;
+let curMode=TARGET?START_MODE:'none';
+
+function build(){
+  if(SHOW_TABS){
+    const tabs=document.getElementById('pmapTabs');
+    tabs.innerHTML='';
+    [1,2,3].forEach(f=>{
+      const slots=FLOORS[String(f)]||[];
+      const free=slots.filter(s=>s.status==='AVAILABLE').length;
+      const d=document.createElement('div');
+      d.className='pmap-tab'+(f===curFloor?' active':'')
+                +(TARGET&&f===TARGET_FLOOR?' hasSlot':'');
+      d.innerHTML='Floor '+f+'<span class="sub">'+free+' free'
+        +(TARGET&&f===TARGET_FLOOR?' &middot; your slot':'')+'</span>';
+      d.onclick=function(){curFloor=f; build();};
+      tabs.appendChild(d);
+    });
+  }
+
+  if(SHOW_BTNS && TARGET){
+    const c=document.getElementById('pmapControls');
+    c.innerHTML='';
+    const add=(label,mode)=>{
+      const b=document.createElement('div');
+      b.className='pmap-btn'+(curMode===mode?' on':'');
+      b.textContent=label;
+      b.onclick=function(){curMode=mode; curFloor=TARGET_FLOOR; build();};
+      c.appendChild(b);
+    };
+    if(START_MODE==='retrieve') add('Route to my vehicle','retrieve');
+    else                        add('Route to '+TARGET,'to');
+    add('Route to exit','exit');
+  }
+
+  drawFloor(curFloor,curMode);
+}
+
+build();
+
+})();
+</script>

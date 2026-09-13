@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="card">
+
+    <h1>📧 PARKING CONFIRMATION</h1>
+
+    <p>
+        Your vehicle has reached the parking slot.
+    </p>
+
+    <div class="slot">
+        {{ slot_id }}
+    </div>
+
+    <p>
+        Enter your email address.
+    </p>
+
+    <p>
+        We will send your secure parking link
+        to this email.
+    </p>
+
+    <form action="{{ url_for('create_session', slot_id=slot_id) }}"
+          method="POST">
+
+        <input
+            type="email"
+            name="email"
+            placeholder="Enter your email address"
+            required
+        >
+
+        <br>
+
+        <button type="submit" class="primary">
+            📧 SAVE PARKING
+        </button>
+
+    </form>
+
+</div>
+
+{% endblock %}

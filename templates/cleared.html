@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Parking completed{% endblock %}
+
+{% block content %}
+
+<div class="card">
+
+    <h1>PARKING COMPLETED</h1>
+
+    <p>
+        Thank you for using Smart Parking.
+        Your session is now closed and slot
+        <strong>{{ parking.slot_id }}</strong>
+        has been released.
+    </p>
+
+    <div class="slot">
+        {{ parking.slot_id }}
+    </div>
+
+</div>
+
+
+<div class="card">
+
+    <h2>Parking summary</h2>
+
+    <div class="floor-card">
+        <strong>Slot</strong>
+        <span>{{ parking.slot_id }}</span>
+    </div>
+
+    <div class="floor-card">
+        <strong>Floor</strong>
+        <span>{{ parking.floor }}</span>
+    </div>
+
+    <div class="floor-card">
+        <strong>Entry time</strong>
+        <span>{{ parking.start_time.replace("T", " ") }}</span>
+    </div>
+
+    <div class="floor-card">
+        <strong>Exit time</strong>
+        <span>{{ exit_time.replace("T", " ") }}</span>
+    </div>
+
+    <div class="floor-card">
+        <strong>Duration</strong>
+        <span class="available">{{ duration }}</span>
+    </div>
+
+    <div class="floor-card">
+        <strong>Email</strong>
+        <span>{{ parking.email }}</span>
+    </div>
+
+</div>
+
+
+<div class="card">
+
+    <h2>Slot released</h2>
+
+    <p>
+        Slot {{ parking.slot_id }} is now marked
+        <strong>AVAILABLE</strong> and can be allocated
+        to the next vehicle.
+    </p>
+
+    <a class="button primary" href="{{ url_for('home') }}">
+        BACK TO HOME
+    </a>
+
+</div>
+
+{% endblock %}

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="card">
+
+    <h1>✅ PARKING SESSION CREATED</h1>
+
+    <p>Your parking details have been saved.</p>
+
+    <div class="slot">
+        {{ parking.slot_id }}
+    </div>
+
+    <p>
+        <strong>Floor:</strong>
+        {{ parking.floor }}
+    </p>
+
+    <p>
+        <strong>Session ID:</strong>
+        {{ parking.id }}
+    </p>
+
+    <p>
+        <strong>Email:</strong>
+        {{ parking.email }}
+    </p>
+
+</div>
+
+
+<div class="card">
+
+    <h2>📧 Parking Link</h2>
+
+    <p>
+        A secure link will be sent to your email.
+    </p>
+
+    <p>
+        You can use that link later to:
+    </p>
+
+    <ul>
+        <li>🚗 Find your vehicle</li>
+        <li>📍 Navigate to your vehicle</li>
+        <li>🚪 Navigate to the exit</li>
+        <li>✅ Confirm that you have exited</li>
+    </ul>
+
+</div>
+
+
+<div class="card">
+
+    <h2>Your Parking Information</h2>
+
+    <p>
+        Keep your parking link safe.
+    </p>
+
+    <a
+        class="button"
+        href="{{ url_for('parking', session_id=parking.id) }}"
+    >
+        OPEN PARKING PAGE
+    </a>
+
+</div>
+
+{% endblock %}

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="card">
+
+    <h1>🚫 PARKING FULL</h1>
+
+    <p class="danger">
+        All 60 parking slots are currently occupied.
+    </p>
+
+    <p>
+        There are no available parking slots at this time.
+    </p>
+
+</div>
+
+
+<div class="card">
+
+    <h2>Parking Status</h2>
+
+    <div class="floor-card">
+        <strong>Floor 1</strong>
+        <span class="full">FULL</span>
+    </div>
+
+    <div class="floor-card">
+        <strong>Floor 2</strong>
+        <span class="full">FULL</span>
+    </div>
+
+    <div class="floor-card">
+        <strong>Floor 3</strong>
+        <span class="full">FULL</span>
+    </div>
+
+</div>
+
+
+<div class="card">
+
+    <h2>🚪 Need to Leave?</h2>
+
+    <p>
+        If you are already inside the parking area,
+        follow the signs to the exit.
+    </p>
+
+    <a href="/">
+        <button type="button" class="primary">
+            RETURN TO HOME
+        </button>
+    </a>
+
+</div>
+
+{% endblock %}

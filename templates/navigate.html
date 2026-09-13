@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+
+{% block title %}Live navigation - {{ slot.id }}{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  #gpsMap{height:44vh; min-height:250px; width:100%;
+          border-radius:12px; background:#10243a}
+  .gps-badge{
+    display:inline-block; padding:6px 11px; border-radius:999px;
+    font-size:12px; font-weight:650;
+    background:#10243a; color:#9fb3c8; border:1px solid #1d3550;
+  }
+  .gps-badge.live{background:rgba(34,197,94,.14); color:#7ee2a8;
+                  border-color:rgba(34,197,94,.38)}
+  .gps-badge.err {background:rgba(239,68,68,.14); color:#fca5a5;
+                  border-color:rgba(239,68,68,.38)}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="card">
+
+    <div class="dashboard-title">
+        <h1>LIVE NAVIGATION</h1>
+        <span class="gps-badge" id="gpsBadge">Starting GPS...</span>
+    </div>
+
+    <p>
+        Guiding you to the parking building.
+        Your slot is <strong>{{ slot.id }}</strong>
+        on Floor {{ slot.floor }}.
+    </p>
+
+    <div id="gpsMap"></div>
+
+    <div class="stats" style="margin-top:14px">
+
+        <div class="stat">
+            <span class="stat-number" id="vDist">--</span>
+            <span class="stat-label">Distance</span>
+        </div>
+
+        <div class="stat">
+            <span class="stat-number" id="vAcc">--</span>
+            <span class="stat-label">Accuracy</span>
+        </div>
+
+        <div class="stat">
+            <span class="stat-number" id="vFix">0</span>
+            <span class="stat-label">Updates</span>
+        </div>
+
+    </div>
+
+    <div class="location-status" id="statusMsg">
+        Allow location access when your browser asks,
+        then start driving toward the parking building.
+    </div>
+
+</div>
+
+
+<div class="card">
+
+    <h2>Inside the building</h2>
+
+    <p>
+        GPS cannot tell floors apart, so once you arrive
+        follow this floor map to <strong>{{ slot.id }}</strong>.
+    </p>
+
+    {% set map_mode = "to" %}
+    {% set map_tabs = false %}
+    {% set map_buttons = false %}
+    {% include "_map.html" %}
+
+</div>
+
+
+<div class="card">
+
+    <form method="POST" action="{{ url_for('reach', slot_id=slot.id) }}">
+        <button class="primary" type="submit">
+            I HAVE REACHED {{ slot.id }}
+        </button>
+    </form>
+
+    <a class="button" href="{{ url_for('parking_map', slot_id=slot.id) }}">
+        SEE ALL THREE FLOORS
+    </a>
+
+    <a class="button" href="{{ url_for('home') }}">
+        BACK TO HOME
+    </a>
+
+    <p style="margin-top:12px; font-size:12.5px">
+        Location only works on
+        <strong>http://127.0.0.1:5000</strong> or on an
+        <strong>https://</strong> address. Opening this page from a
+        phone at a plain <code>http://192.168.x.x</code> address
+        makes the browser block GPS.
+    </p>
+
+</div>
+
+
+<script>
+const BUILDING = {
+  lat:  {{ building.lat }},
+  lon:  {{ building.lon }},
+  name: {{ building.name | tojson }}
+};
+const SLOT     = {{ slot.id | tojson }};
+const FLOOR    = {{ slot.floor }};
+const ARRIVE_M = {{ arrive_radius }};
+
+const map = L.map('gpsMap').setView([BUILDING.lat, BUILDING.lon], 17);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
+
+const destIcon = L.divIcon({
+  className:'', iconSize:[26,26], iconAnchor:[13,13],
+  html:'<div style="width:26px;height:26px;border-radius:50%;background:#3b82f6;'
+      +'border:3px solid #fff;box-shadow:0 0 0 3px rgba(59,130,246,.35)"></div>'
+});
+L.marker([BUILDING.lat, BUILDING.lon], {icon:destIcon})
+ .addTo(map).bindPopup(BUILDING.name);
+
+L.circle([BUILDING.lat, BUILDING.lon], {
+  radius: ARRIVE_M, color:'#3b82f6', weight:1,
+  fillColor:'#3b82f6', fillOpacity:.08
+}).addTo(map);
+
+let userMarker=null, userCircle=null, routeLine=null, fixes=0, arrived=false;
+const badge=document.getElementById('gpsBadge');
+const statusMsg=document.getElementById('statusMsg');
+
+function metres(aLat,aLon,bLat,bLon){
+  const R=6371000, toRad=d=>d*Math.PI/180;
+  const dLat=toRad(bLat-aLat), dLon=toRad(bLon-aLon);
+  const h=Math.sin(dLat/2)**2
+        + Math.cos(toRad(aLat))*Math.cos(toRad(bLat))*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+const fmt=m=> m>=1000 ? (m/1000).toFixed(2)+' km' : Math.round(m)+' m';
+
+function onFix(pos){
+  const lat=pos.coords.latitude, lon=pos.coords.longitude, acc=pos.coords.accuracy;
+
+  fixes++;
+  badge.className='gps-badge live';
+  badge.textContent='Live';
+  document.getElementById('vFix').textContent=fixes;
+  document.getElementById('vAcc').textContent='±'+Math.round(acc)+' m';
+
+  if(!userMarker){
+    userMarker=L.marker([lat,lon]).addTo(map).bindPopup('You are here');
+    userCircle=L.circle([lat,lon],{radius:acc,color:'#22c55e','weight':1,
+      fillColor:'#22c55e',fillOpacity:.12}).addTo(map);
+  }else{
+    userMarker.setLatLng([lat,lon]);
+    userCircle.setLatLng([lat,lon]).setRadius(acc);
+  }
+
+  const pts=[[lat,lon],[BUILDING.lat,BUILDING.lon]];
+  if(!routeLine){
+    routeLine=L.polyline(pts,{color:'#22c55e',weight:3,dashArray:'7,7'}).addTo(map);
+    map.fitBounds(L.latLngBounds(pts).pad(0.35));
+  }else{
+    routeLine.setLatLngs(pts);
+  }
+
+  const d=metres(lat,lon,BUILDING.lat,BUILDING.lon);
+  document.getElementById('vDist').textContent=fmt(d);
+
+  if(d<=ARRIVE_M){
+    if(!arrived){ arrived=true; map.setView([BUILDING.lat,BUILDING.lon],18); }
+    statusMsg.innerHTML='You have <strong>arrived at '+BUILDING.name
+      +'</strong>. Follow the floor map below: take the ramp to <strong>Floor '
+      +FLOOR+'</strong> and park at <strong>'+SLOT+'</strong>.';
+  }else{
+    arrived=false;
+    statusMsg.innerHTML='You are <strong>'+fmt(d)+'</strong> from '+BUILDING.name
+      +'. Slot <strong>'+SLOT+'</strong> is held on Floor '+FLOOR
+      +'. Indoor guidance appears within '+ARRIVE_M+' m of the entrance.';
+  }
+}
+
+function onErr(err){
+  badge.className='gps-badge err';
+  const names={1:'Permission denied',2:'Position unavailable',3:'Timed out'};
+  badge.textContent=names[err.code]||'GPS error';
+
+  if(err.code===1){
+    statusMsg.innerHTML='<strong>Location permission was blocked.</strong> '
+      +'Click the icon at the left of the address bar, set Location to '
+      +'<strong>Allow</strong>, then reload this page.';
+  }else if(err.code===2){
+    statusMsg.innerHTML='<strong>No GPS signal.</strong> A desktop PC without GPS '
+      +'hardware often reports this. Open this page on your phone over https, or '
+      +'turn on Wi-Fi so the browser can estimate your position.';
+  }else{
+    statusMsg.innerHTML='<strong>Location request timed out.</strong> '
+      +'Move near a window or reload the page.';
+  }
+}
+
+if(!('geolocation' in navigator)){
+  badge.className='gps-badge err';
+  badge.textContent='Unsupported';
+  statusMsg.textContent='This browser does not support geolocation.';
+}else if(!window.isSecureContext){
+  badge.className='gps-badge err';
+  badge.textContent='Insecure origin';
+  statusMsg.innerHTML='<strong>Browsers block GPS on this address.</strong> Use '
+    +'<strong>http://127.0.0.1:5000</strong> on this computer, or serve over https.';
+}else{
+  navigator.geolocation.watchPosition(onFix,onErr,{
+    enableHighAccuracy:true, maximumAge:2000, timeout:15000
+  });
+}
+</script>
+
+{% endblock %}

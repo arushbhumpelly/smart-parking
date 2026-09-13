@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Find my vehicle - {{ parking.slot_id }}{% endblock %}
+
+{% block content %}
+
+<div class="card">
+
+    <div class="dashboard-title">
+        <h1>FIND MY VEHICLE</h1>
+        <div class="live-status">● LIVE</div>
+    </div>
+
+    <div class="stats">
+
+        <div class="stat">
+            <span class="stat-number">{{ stats.total }}</span>
+            <span class="stat-label">Slots total</span>
+        </div>
+
+        <div class="stat stat-occupied">
+            <span class="stat-number">{{ stats.occupied }}</span>
+            <span class="stat-label">Occupied</span>
+        </div>
+
+        <div class="stat stat-available">
+            <span class="stat-number">{{ stats.available }}</span>
+            <span class="stat-label">Available</span>
+        </div>
+
+    </div>
+
+    <div class="slot">
+        {{ parking.slot_id }}
+    </div>
+
+    <p>
+        <strong>Floor:</strong> {{ parking.floor }}
+        &nbsp;&middot;&nbsp;
+        <strong>Parked at:</strong> {{ parking.start_time.replace("T", " ") }}
+    </p>
+
+    <p>
+        <strong>Session:</strong> {{ parking.id }}
+        &nbsp;&middot;&nbsp;
+        <strong>Status:</strong> {{ parking.status }}
+    </p>
+
+</div>
+
+
+<div class="card">
+
+    <h2>Walk back to your vehicle</h2>
+
+    <p>
+        Your vehicle is parked in <strong>{{ parking.slot_id }}</strong>
+        on Floor {{ parking.floor }}. The green line starts at the lift.
+    </p>
+
+    {% set map_mode = "retrieve" %}
+    {% include "_map.html" %}
+
+</div>
+
+
+<div class="card">
+
+    <h2>Still outside the building?</h2>
+
+    <p>
+        Use live GPS tracking to get back to the parking
+        building first, then follow the floor map above.
+    </p>
+
+    <a class="button"
+       href="{{ url_for('navigate', slot_id=parking.slot_id) }}">
+        OPEN LIVE GPS NAVIGATION
+    </a>
+
+</div>
+
+
+<div class="card">
+
+    <h2>Found your vehicle?</h2>
+
+    <p>
+        Confirm once you are standing at
+        <strong>{{ parking.slot_id }}</strong>.
+        We will then show you the route to the exit.
+    </p>
+
+    <form action="{{ url_for('found', session_id=parking.id) }}"
+          method="POST">
+
+        <button type="submit" class="primary">
+            YES - I FOUND MY VEHICLE
+        </button>
+
+    </form>
+
+</div>
+
+{% endblock %}
