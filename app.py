@@ -20,10 +20,9 @@ ADMIN_USERNAME = "admin"
 # This is a hash of the password "admin123"
 ADMIN_PASSWORD_HASH = hashlib.sha256("admin123".encode("utf-8")).hexdigest()
 
-# Mail Configuration - Strictly using Environment Variables (No exposed secrets)
+# Mail Configuration - Port 465 SSL for cloud platforms (Render)
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_PORT'] = 465
 app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME')
 app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD')
 
@@ -93,8 +92,10 @@ def send_parking_ticket_email(user_email, slot_id, floor, session_id):
         mail_password = app.config['MAIL_PASSWORD']
 
         if not mail_username or not mail_password:
-            print("Error: Missing MAIL_USERNAME or MAIL_PASSWORD environment variables.")
+            print("Error: Environment variables MAIL_USERNAME or MAIL_PASSWORD are missing.")
             return False
+
+        clean_password = mail_password.replace(" ", "")
 
         msg = MIMEMultipart('alternative')
         msg['Subject'] = subject
@@ -102,13 +103,12 @@ def send_parking_ticket_email(user_email, slot_id, floor, session_id):
         msg['To'] = user_email
         msg.attach(MIMEText(html_content, 'html'))
 
-        server = smtplib.SMTP(app.config['MAIL_SERVER'], app.config['MAIL_PORT'])
-        if app.config['MAIL_USE_TLS']:
-            server.starttls()
-        server.login(mail_username, mail_password.replace(" ", ""))
-        server.send_message(msg)
-        server.quit()
+        # Direct SSL Connection on Port 465
+        with smtplib.SMTP_SSL(app.config['MAIL_SERVER'], app.config['MAIL_PORT']) as server:
+            server.login(mail_username, clean_password)
+            server.send_message(msg)
 
+        print("Email sent successfully!")
         return True
     except Exception as e:
         print(f"Error sending email: {e}")
