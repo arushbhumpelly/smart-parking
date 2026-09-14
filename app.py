@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 import os
+import logging
 import sqlite3
 import secrets
 from datetime import datetime
@@ -9,6 +10,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
 
 DATABASE = "parking.db"
 
@@ -20,9 +22,10 @@ ADMIN_USERNAME = "admin"
 # This is a hash of the password "admin123"
 ADMIN_PASSWORD_HASH = hashlib.sha256("admin123".encode("utf-8")).hexdigest()
 
-# Mail Configuration - Port 465 SSL for cloud platforms (Render)
+# Mail Configuration - Strictly using Environment Variables (No exposed secrets)
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-app.config['MAIL_PORT'] = 465
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME')
 app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD')
 
@@ -53,7 +56,7 @@ def send_parking_ticket_email(user_email, slot_id, floor, session_id):
     parking_url = f"{host_url}/parking/{session_id}"
 
     subject = f"Smart Parking Ticket & Route Map — Slot {slot_id}"
-    
+
     html_content = f"""
     <html>
     <body style="font-family: Arial, sans-serif; background-color: #0f172a; color: #ffffff; padding: 20px;">
@@ -62,21 +65,21 @@ def send_parking_ticket_email(user_email, slot_id, floor, session_id):
             <p><strong>Assigned Slot:</strong> {slot_id}</p>
             <p><strong>Floor Level:</strong> Floor {floor}</p>
             <hr style="border-color: #334155;" />
-            
+
             <h3 style="color: #4ade80;">Visual Exit Route</h3>
             <div style="text-align: center; margin: 20px 0;">
                 <svg width="400" height="150" style="background:#0f172a; border-radius:8px;">
                     <rect x="20" y="20" width="80" height="40" fill="#3b82f6" rx="5"/>
                     <text x="60" y="45" fill="white" font-size="12" text-anchor="middle">Slot {slot_id}</text>
-                    
+
                     <path d="M 60 70 L 60 110 L 320 110 L 320 130" stroke="#f97316" stroke-width="4" fill="none" stroke-dasharray="5,5"/>
                     <polygon points="320,135 315,125 325,125" fill="#f97316"/>
-                    
+
                     <rect x="270" y="105" width="100" height="35" fill="#22c55e" rx="5"/>
                     <text x="320" y="127" fill="white" font-size="12" text-anchor="middle">EXIT GATE</text>
                 </svg>
             </div>
-            
+
             <div style="text-align: center; margin-top: 25px;">
                 <a href="{parking_url}" style="background-color: #38bdf8; color: #0f172a; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
                     VIEW LIVE PARKING DASHBOARD
@@ -87,31 +90,34 @@ def send_parking_ticket_email(user_email, slot_id, floor, session_id):
     </html>
     """
 
+    mail_username = os.environ.get("MAIL_USERNAME")
+    mail_password = os.environ.get("MAIL_PASSWORD")
+
+    if not mail_username or not mail_password:
+        app.logger.error("Missing MAIL_USERNAME or MAIL_PASSWORD environment variables.")
+        return False
+
     try:
-        mail_username = app.config['MAIL_USERNAME']
-        mail_password = app.config['MAIL_PASSWORD']
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = mail_username
+        msg["To"] = user_email
+        msg.attach(MIMEText(html_content, "html"))
 
-        if not mail_username or not mail_password:
-            print("Error: Environment variables MAIL_USERNAME or MAIL_PASSWORD are missing.")
-            return False
-
-        clean_password = mail_password.replace(" ", "")
-
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = subject
-        msg['From'] = mail_username
-        msg['To'] = user_email
-        msg.attach(MIMEText(html_content, 'html'))
-
-        # Direct SSL Connection on Port 465
-        with smtplib.SMTP_SSL(app.config['MAIL_SERVER'], app.config['MAIL_PORT']) as server:
-            server.login(mail_username, clean_password)
+        # Gmail SMTP: port 587 with STARTTLS.
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
+            server.set_debuglevel(1)
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(mail_username, mail_password.replace(" ", ""))
             server.send_message(msg)
 
-        print("Email sent successfully!")
+        app.logger.info("Parking email sent successfully to %s", user_email)
         return True
-    except Exception as e:
-        print(f"Error sending email: {e}")
+
+    except Exception:
+        app.logger.exception("Email sending failed")
         return False
 
 # --------------------------------------------------
@@ -434,7 +440,15 @@ def create_session(slot_id):
     connection.close()
 
     # Dispatch email ticket with route map
-    send_parking_ticket_email(email, slot_id, slot["floor"], session_id)
+    email_sent = send_parking_ticket_email(
+        email,
+        slot_id,
+        slot["floor"],
+        session_id
+    )
+
+    if not email_sent:
+        app.logger.error("Parking session %s was created, but the email could not be sent.", session_id)
 
     return render_template(
         "success.html",
@@ -734,10 +748,12 @@ def admin_delete_slot(slot_id):
 # --------------------------------------------------
 # START APPLICATION
 # --------------------------------------------------
+# Initialize the database when the app is imported by Gunicorn/Render.
+initialize_database()
+
 if __name__ == "__main__":
-    initialize_database()
     app.run(
-        debug=True,
+        debug=False,
         host="0.0.0.0",
-        port=5000
+        port=int(os.environ.get("PORT", 5000))
     )
