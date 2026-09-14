@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash
+import os
 import sqlite3
 import secrets
 from datetime import datetime
@@ -19,13 +20,12 @@ ADMIN_USERNAME = "admin"
 # This is a hash of the password "admin123"
 ADMIN_PASSWORD_HASH = hashlib.sha256("admin123".encode("utf-8")).hexdigest()
 
-# --------------------------------------------------
-# EMAIL CONFIGURATION (Gmail SMTP)
-# --------------------------------------------------
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
-SENDER_EMAIL = "arush.rootexe@gmail.com"
-SENDER_PASSWORD = "aflc ffrw bxyw kidr"
+# Mail Configuration
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME', 'smartparkingnavigationsystem@gmail.com')
+app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD', 'vxyl dsjc zyth fqqt')
 
 # --------------------------------------------------
 # PARKING BUILDING LOCATION
@@ -89,15 +89,18 @@ def send_parking_ticket_email(user_email, slot_id, floor, session_id):
     """
 
     try:
+        mail_username = app.config['MAIL_USERNAME']
+        mail_password = app.config['MAIL_PASSWORD']
         msg = MIMEMultipart('alternative')
         msg['Subject'] = subject
-        msg['From'] = SENDER_EMAIL
+        msg['From'] = mail_username
         msg['To'] = user_email
         msg.attach(MIMEText(html_content, 'html'))
 
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
-        server.starttls()
-        server.login(SENDER_EMAIL, SENDER_PASSWORD.replace(" ", ""))
+        server = smtplib.SMTP(app.config['MAIL_SERVER'], app.config['MAIL_PORT'])
+        if app.config['MAIL_USE_TLS']:
+            server.starttls()
+        server.login(mail_username, mail_password.replace(" ", ""))
         server.send_message(msg)
         server.quit()
 
