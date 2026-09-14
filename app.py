@@ -20,12 +20,12 @@ ADMIN_USERNAME = "admin"
 # This is a hash of the password "admin123"
 ADMIN_PASSWORD_HASH = hashlib.sha256("admin123".encode("utf-8")).hexdigest()
 
-# Mail Configuration
+# Mail Configuration - Strictly using Environment Variables (No exposed secrets)
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME', 'smartparkingnavigationsystem@gmail.com')
-app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD', 'vxyl dsjc zyth fqqt')
+app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD')
 
 # --------------------------------------------------
 # PARKING BUILDING LOCATION
@@ -91,6 +91,11 @@ def send_parking_ticket_email(user_email, slot_id, floor, session_id):
     try:
         mail_username = app.config['MAIL_USERNAME']
         mail_password = app.config['MAIL_PASSWORD']
+
+        if not mail_username or not mail_password:
+            print("Error: Missing MAIL_USERNAME or MAIL_PASSWORD environment variables.")
+            return False
+
         msg = MIMEMultipart('alternative')
         msg['Subject'] = subject
         msg['From'] = mail_username
